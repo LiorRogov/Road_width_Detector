@@ -32,7 +32,9 @@ The initial need for this program was to address challenges such as removing par
 
 ## Requirements
   you have to run the following command to install the required libraries
+   ```bash
   pip install -r requirements.txt
+  '''
 ## Getting Started
 
 Before running the program, a config file must be set.
