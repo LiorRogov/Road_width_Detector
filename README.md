@@ -10,9 +10,9 @@ An application for analyzing road widths in aerial imagery, generating road outl
 
 - [Overview](#overview)
 - [Features](#features)
-- [Requirements](#Requirements)
+- [Requirements](#requirements)
 - [Getting Started](#getting-started)
-- [Config File](#config File)
+- [Config File](#config-file)
 - [Usage](#usage)
 
 ## Overview
@@ -25,35 +25,38 @@ The initial need for this program was to address challenges such as removing par
 
 - **Road Width Analysis:** Utilizes the provided shapefile to analyze and determine road widths in the aerial imagery.
 - **Output Images:**
-  - **Road Outlines:** kind of edge detection.
+  - **Road Outlines:** Kind of edge detection.
   - **Road Masks with Widths:** Masks highlighting the roads with their corresponding widths.
   - **Original TIFF Image:** The unaltered aerial imagery.
   - **Colored Roads TIFF Image:** A new TIFF image with roads colored to maintain similar road coloring.
 
 ## Requirements
-you have to run the following command to install the required libraries
- ```bash
+
+You have to run the following command to install the required libraries:
+
+```bash
 pip install -r requirements.txt
-'''
-## Getting Started
 
-Before running the program, a config file must be set.
+## Usage
 
-1. Run a single image using the following command:
+Before running the program, make sure to set up the configuration file.
 
-    ```bash
-    python adaptive_road_width_lib.py "your_aerial_image.tiff" "shapefile.shp"
-    ```
+1. **Run a Single Image:**
 
-2. Run a folder of images using the following command (config file must be defined):
-
-    ```bash
-    python main.py
-    ```
+   ```bash
+   python adaptive_road_width_lib.py "your_aerial_image.tiff" "shapefile.shp"
+   ```
+  Replace "your_aerial_image.tiff" with the path to your TIFF format aerial image and "shapefile.shp" with the path to your corresponding shapefile.
+  
+2. **Run a Folder of Images:**
+  To process a folder of images, ensure that the config file is defined. Run the following command:
+  ```bash
+  python main.py
+  ```
 
 ## Config File
 
-The config file is written in a JSON file.
+The config file is a JSON file where you can specify various parameters for the road width analysis. Below is an example of a config file with explanations for each parameter:
 
 ```json
 {
@@ -61,12 +64,19 @@ The config file is written in a JSON file.
   "IMAGES_DIR": "C:\\Users\\Simlat\\Desktop\\simlat lior\\material solver\\material solver data\\Imagery\\10",
   "OUTPUT_FOLDER": "C:\\Users\\Simlat\\Desktop\\simlat lior\\width_road_detector\\road_width_output",
 
-  "PIXEL_DISTANCE_TRESH" : 1, // Max distance for pixel color to be considered a road pixel
-  "PREPENDICULAR_LENGTH" : 1.5, // Defined length of perpendicular lines, perpendicular to the roads' polylines, for pixel sampling
-  "SPACES_BETWEEN_PREPENDICULAR" : 0.25, // Distance between two perpendicular lines in meters.
-  "ROAD_SORT_SIZE": 1, // An integer to control the length of roads to be analyzed. For instance, if the variable is one, the polylines will be separated into different polylines, each one meter in length.
-  "PROCESS_BATCH_SIZE": 10 // Number of roads to be processed together in the same batch.
+  "PIXEL_DISTANCE_TRESH" : 1,
+  // Max distance for pixel color to be considered a road pixel
+
+  "PREPENDICULAR_LENGTH" : 1.5,
+  // Defined length of perpendicular lines, perpendicular to the roads' polylines, for pixel sampling
+
+  "SPACES_BETWEEN_PREPENDICULAR" : 0.25,
+  // Distance between two perpendicular lines in meters.
+
+  "ROAD_SORT_SIZE": 1,
+  // An integer to control the length of roads to be analyzed. 
+  // For instance, if the variable is one, the polylines will be separated into different polylines, each one meter in length.
+
+  "PROCESS_BATCH_SIZE": 10
+  // Number of roads to be processed together in the same batch.
 }
-
-
-
