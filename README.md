@@ -10,9 +10,9 @@ An application for analyzing road widths in aerial imagery, generating road outl
 
 - [Overview](#overview)
 - [Features](#features)
-- [Requirements]
+- [Requirements](#Requirements)
 - [Getting Started](#getting-started)
-- [Config File](#Config File)
+- [Config File](#config File)
 - [Usage](#usage)
 
 ## Overview
@@ -31,10 +31,10 @@ The initial need for this program was to address challenges such as removing par
   - **Colored Roads TIFF Image:** A new TIFF image with roads colored to maintain similar road coloring.
 
 ## Requirements
-  you have to run the following command to install the required libraries
-   ```bash
-  pip install -r requirements.txt
-  '''
+you have to run the following command to install the required libraries
+ ```bash
+pip install -r requirements.txt
+'''
 ## Getting Started
 
 Before running the program, a config file must be set.
