@@ -36,7 +36,7 @@ You have to run the following command to install the required libraries:
 
 ```bash
 pip install -r requirements.txt
-
+```
 ## Usage
 
 Before running the program, make sure to set up the configuration file.
