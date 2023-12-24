@@ -1,18 +1,18 @@
 {
-    "ROADS_SHAPEFILE_FILE": "C:\\Users\\Simlat\\Desktop\\simlat lior\\material solver\\material solver data\\Vectors\\Roads\\alaro_roads.shp",
-    "IMAGES_DIR": "C:\\Users\\Simlat\\Desktop\\simlat lior\\material solver\\material solver data\\Imagery\\10",
-    "OUTPUT_FOLDER": "C:\\Users\\Simlat\\Desktop\\simlat lior\\width_road_detector\\road_width_output",
+    "ROADS_SHAPEFILE_FILE": "C:\\Users\\Simlat\\Desktop\\simlat lior\\Road Sumo Solver\\output\\to_use\\vector_porto_santo.shp",
+    "IMAGES_DIR": "C:\\Users\\Simlat\\Desktop\\simlat lior\\material solver\\Alaro for demo\\",
+    "OUTPUT_FOLDER": "C:\\Users\\Simlat\\Desktop\\simlat lior\\material solver\\Alaro for demo\\output\\",
     
-    "PIXEL_DISTANCE_TRESH" : 1,
-    "PREPENDICULAR_LENGTH" : 1.5, 
-    "SPACES_BETWEEN_PREPENDICULAR" : 0.25,
-    "ROAD_SORT_SIZE": 1,
-    "PROCESS_BATCH_SIZE": 10,
+    "PIXEL_DISTANCE_TRESH" : 6,
+    "PREPENDICULAR_LENGTH" : 1.75, 
+    "SPACES_BETWEEN_PREPENDICULAR" : 0.20,
+    "ROAD_SORT_SIZE": 70,
+    "PROCESS_BATCH_SIZE": 5,
     
-    "BAD_GUESS_POLYGON_BUFFER" : 0.00010,
+    "BAD_GUESS_POLYGON_BUFFER" : 0.00009,
     "KERNEL_SIZE" : [5,5],
     
-    "AVRAGE_DISTANCE_MAX" : 5.5,
-    "AVRAGE_DISTANCE_MAX_DISTANCE_SUBSTITUTE" : 4,
+    "AVRAGE_DISTANCE_MAX" : 8,
+    "AVRAGE_DISTANCE_MAX_DISTANCE_SUBSTITUTE" : 8,
     "AVRAGE_DISTANCE_FAILIURE" : 2
 }

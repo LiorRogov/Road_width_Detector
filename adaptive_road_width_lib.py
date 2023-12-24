@@ -26,8 +26,9 @@ from shutil import copy
 import tifffile
 import numpy as np
 from blend_modes import multiply as mult_blend
+from blend_modes import normal as nr
 from PIL import Image
-
+import pandas  as pd
 
 
 
@@ -38,8 +39,8 @@ f = open('config.json')
 # a dictionary
 config = json.load(f)
 
-IMAGES_DIR =  r"C:\\Users\\simlat\\Desktop\\PORTO_SANTO_IMG_C3\\images"
-OUTPUT_FOLDER = r"C:\\Users\\Simlat\\Desktop\\road_width_output"
+IMAGES_DIR =  config['IMAGES_DIR']
+OUTPUT_FOLDER = config['OUTPUT_FOLDER']
 
 PIXEL_DISTANCE_TRESH, PREPENDICULAR_LENGTH, SPACES_BETWEEN_PREPENDICULAR = config['PIXEL_DISTANCE_TRESH'], config['PREPENDICULAR_LENGTH'], config['SPACES_BETWEEN_PREPENDICULAR']
 ROAD_SORT_SIZE =  config['ROAD_SORT_SIZE']
@@ -56,19 +57,53 @@ def draw_clean_roads_on_image(image, mask, outline):
    
     mask = np.dstack((mask, mask, mask))
     outline = np.dstack((outline, outline, outline))
+    #road_rescaled_mask = cv2.imread('output.png')[:2000, :2000]
     
     mask_blured_egdes = cv2.GaussianBlur(mask , (41, 41), 0)
-    blur_image_roads = np.where(mask_blured_egdes != 0, cv2.GaussianBlur(image , (0,0), 15), 0)
-    blur_outline_roads = np.where(mask_blured_egdes != 0, cv2.GaussianBlur(outline , (0,0), 10), 0)
+    
+    #the image pixelate than add blur
+    height, width = image.shape[:2]
+
+    # Desired "pixelated" size
+    w, h = (150, 150)
+
+    # Resize input to "pixelated" size
+    temp = cv2.resize(image, (w, h), interpolation=cv2.INTER_LINEAR)
+
+    # Initialize output image
+    output = cv2.resize(temp, (width, height), interpolation=cv2.INTER_NEAREST)
+
+    pixelated_image_roads = output
+
+    blur_image_roads = np.where(mask_blured_egdes != 0, cv2.GaussianBlur(pixelated_image_roads , (0,0), 7), 0)
+
+    blur_outline_roads = np.where(mask_blured_egdes != 0, cv2.GaussianBlur(outline , (0,0), 15), 0)
+    
+    #road_rescaled_mask_roads = np.array(Image.fromarray(np.where(mask_blured_egdes != 0, road_rescaled_mask, 0)).convert('RGBA'), dtype= float)
 
     blur_image_roads_fixed = np.array(Image.fromarray(blur_image_roads).convert("RGBA"), dtype= float)
     blur_outline_roads_fixes = np.array(Image.fromarray(blur_outline_roads).convert("RGBA"), dtype= float)
 
-    final_road_mask = np.array(Image.fromarray(np.uint8(mult_blend(blur_outline_roads_fixes, blur_image_roads_fixed, 0.5))).convert('RGB'))
+    final_road_mask = np.array(Image.fromarray(np.uint8(mult_blend(blur_image_roads_fixed, blur_outline_roads_fixes, 0.55))).convert('RGB'))
 
-    final_image = np.where(final_road_mask != 0, final_road_mask, image)
+    #temp = np.uint8(mult_blend(road_mask, road_rescaled_mask_roads, 0.5))
+    #final_mask = Image.fromarray(temp).convert('RGB')
+    #final_road_mask = np.array(final_mask)
 
-    return final_image
+    final_image = np.where(mask_blured_egdes != 0, final_road_mask, image)
+
+    blur_outline_true_road = np.array(Image.fromarray(np.where(mask_blured_egdes != 0, cv2.GaussianBlur(final_image , (81,81), 0), 0)).convert('RGBA'), dtype= float)
+    
+    temp = np.where(mask_blured_egdes != 0, cv2.imread(r'output.png'), 0)
+
+    road_texture = np.array(Image.fromarray(temp).convert('RGBA'), dtype= float)
+
+    final_mask = np.array(Image.fromarray(np.uint8(nr(blur_outline_true_road, road_texture, 0.20))).convert('RGB'))
+
+    final_image_super = np.where(final_mask != 0, final_mask, image)
+
+
+    return final_image_super
 
 
 def copy_geodata_to(source_tiff: str, destination_tiff:str):
@@ -586,13 +621,21 @@ def road_function(src: rasterio, image: np.ndarray, road_geom_coords: list, max_
 
         # Create a road polygon from the center lines
         road_polygon = Polygon(list(lineA.coords) + list(lineB.coords)[::-1])
-        shapes = [(road_polygon, 1)]
 
+        # Check if the polygon is closed and valid
+        if road_polygon.is_empty or not road_polygon.is_valid or not road_polygon.exterior.is_closed:
+            # If not closed, close the polygon
+            exterior_coords = list(road_polygon.exterior.coords)
+            if exterior_coords[0] != exterior_coords[-1]:
+                exterior_coords.append(exterior_coords[0])
+                road_polygon = Polygon(exterior_coords)
+        
         # Create a mask from the road polygon
+        shapes = [(road_polygon, 1)]
         polyline_mask = features.geometry_mask(shapes, out_shape=(src.height, src.width), transform=src.transform, invert=True).astype('uint8')
     
 
-        return polyline_mask
+        return polyline_mask, road_polygon
     
     except:
         # Handle the exception by creating center lines and road polygon
@@ -600,10 +643,18 @@ def road_function(src: rasterio, image: np.ndarray, road_geom_coords: list, max_
         lineB = calculate_to_lines_to_center_line(fixed_road_geom_coords, AVRAGE_DISTANCE_FAILIURE, a_side= False)
         
         road_polygon = Polygon(list(lineA.coords) + list(lineB.coords)[::-1])
-        shapes = [(road_polygon, 1)]
+        # Check if the polygon is closed and valid
+        if road_polygon.is_empty or not road_polygon.is_valid or not road_polygon.exterior.is_closed:
+            # If not closed, close the polygon
+            exterior_coords = list(road_polygon.exterior.coords)
+            if exterior_coords[0] != exterior_coords[-1]:
+                exterior_coords.append(exterior_coords[0])
+                road_polygon = Polygon(exterior_coords)
 
+        shapes = [(road_polygon, 1)]
         polyline_mask = features.geometry_mask(shapes, out_shape=(src.height, src.width), transform=src.transform, invert=True).astype('uint8')
-        return polyline_mask
+        
+        return polyline_mask, road_polygon
        
 
 def equalize_with_blend(original_image, equalized_image, blend_factor):
@@ -676,6 +727,7 @@ def worker_function(data):
     Returns:
         None
     """
+    list_geometries = []
     section, image_path = data
     image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
     roads_shapefile = gpd.read_file('results/roads.shp')
@@ -689,7 +741,7 @@ def worker_function(data):
     
     for geom in tqdm(roads_shapefile.geometry[section: end_point]):
         
-        road_mask = road_function(
+        road_mask , road_polygon = road_function(
             src,
             image, 
             make_list_from_polyline(geom), 
@@ -698,13 +750,21 @@ def worker_function(data):
             PREPENDICULAR_LENGTH)
         
         #print ('Total Road:' ,road_mask.shape)
-        
+        list_geometries.append(road_polygon)
         total_combined = np.where(road_mask != 0, road_mask, total_combined)
+    
+    table = {'polyline': [str(make_list_from_polyline(polyline)) for polyline in roads_shapefile.geometry[section: end_point]]}
+    road_associated_polygon = gpd.GeoDataFrame(geometry= list_geometries, data= table)
 
+
+
+    
     import pickle
     os.makedirs('results/', exist_ok= True)
     with open(f'results/image_{section}_{end_point}.pkl', 'wb') as f:
-        pickle.dump(total_combined, f)
+        pickle.dump((road_associated_polygon, total_combined), f)
+    
+    return list_geometries
 
 
 
@@ -729,12 +789,14 @@ if __name__ == '__main__':
 
     num_cores = multiprocessing.cpu_count()
 
+    print (shapefile_path)
     raw_roads_shapefile = gpd.read_file(shapefile_path)
-
+    
     with rasterio.open(image_path) as src:
         profile = src.profile  # Get the metadata (e.g., spatial resolution, CRS)
         image_transform = src.transform
         crs = src.crs
+
         
     # Read the shapefile and reproject to match the CRS of the GeoTIFF
     shapefile = raw_roads_shapefile.to_crs(profile["crs"])  # Reproject the shapefile
@@ -743,76 +805,94 @@ if __name__ == '__main__':
     geotiff_bounds = box(*src.bounds)
 
     # Filter out polygons that do not intersect with the GeoTIFF
-    cleaned_shapefile = shapefile[shapefile.geometry.intersects(geotiff_bounds)]
+    cleaned_shapefile = raw_roads_shapefile[raw_roads_shapefile.geometry.intersects(geotiff_bounds)]
 
     #creating even length polylines for improving proccesing time
-    list_even_length_linestrings = []
-    for raw_geom in cleaned_shapefile['geometry']:
-        list_coords_geom = []
-        for i in range(1, len(raw_geom.coords)):
-           list_coords_geom = list_coords_geom + [Point(raw_geom.coords[i-1])] + create_intermidiate_points_between_true_points(Point(raw_geom.coords[i-1]), Point(raw_geom.coords[i]), ROAD_SORT_SIZE)
+    if not(cleaned_shapefile.empty):
+        list_even_length_linestrings = []
+        for raw_geom in cleaned_shapefile['geometry']:
+            list_coords_geom = []
+            for i in range(1, len(raw_geom.coords)):
+                list_coords_geom = list_coords_geom + [Point(raw_geom.coords[i-1])] + create_intermidiate_points_between_true_points(Point(raw_geom.coords[i-1]), Point(raw_geom.coords[i]), ROAD_SORT_SIZE)
 
-        list_coords_geom = list_coords_geom + [Point(raw_geom.coords[-1])]
+            
+            list_coords_geom = list_coords_geom + [Point(raw_geom.coords[-1])]
+                
+
+            for i in range(1, len(list_coords_geom)):
+                print ([list_coords_geom[i-1], list_coords_geom[i]])
+                list_even_length_linestrings.append(LineString([list_coords_geom[i-1], list_coords_geom[i]]))
+
+        roads_shapefile = gpd.GeoDataFrame(geometry= list_even_length_linestrings)
+        os.makedirs('results',exist_ok= True)
+        roads_shapefile.to_file('results/roads.shp')
+
+        print (os.path.basename(image_path))
+        image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+
+        num_processes = num_cores
+        index_list = [[i, image_path] for i in range(0, len(roads_shapefile['geometry']), PROCESS_BATCH_SIZE)]
+
+        with multiprocessing.Pool(processes=num_processes) as pool:
+            # Use the map function to apply the simple_function to each input value
+            results = pool.map(worker_function, index_list)
+            
+        list_geoms = []
+        for list_polygons in results:
+            for geom in list_polygons:
+                list_geoms.append(geom)
         
-
-        for i in range(1, len(list_coords_geom)):
-            print ([list_coords_geom[i-1], list_coords_geom[i]])
-            list_even_length_linestrings.append(LineString([list_coords_geom[i-1], list_coords_geom[i]]))
-    
-    roads_shapefile = gpd.GeoDataFrame(geometry= list_even_length_linestrings)
-    os.makedirs('results',exist_ok= True)
-    roads_shapefile.to_file('results/roads.shp')
-
-    print (os.path.basename(image_path))
-    image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
-
-    num_processes = num_cores
-    index_list = [[i, image_path] for i in range(0, len(roads_shapefile['geometry']), PROCESS_BATCH_SIZE)]
-
-    with multiprocessing.Pool(processes=num_processes) as pool:
-        # Use the map function to apply the simple_function to each input value
-        results = pool.map(worker_function, index_list)
         
+        grand_geodata_frame = gpd.GeoDataFrame()
+        total = np.zeros(image.shape[:2]).astype('uint8')
+        for path in glob.glob('results/*.pkl'):
+            with open(path, 'rb') as f:
+                data_frame ,array = pickle.load(f)
+                grand_geodata_frame = pd.concat([grand_geodata_frame, data_frame])
+            total = np.where(array != 0, array, total)
+            os.remove(path)
+
     
-    total = np.zeros(image.shape[:2]).astype('uint8')
-    for path in glob.glob('results/*.pkl'):
-        with open(path, 'rb') as f:
-            array = pickle.load(f)
-        total = np.where(array != 0, array, total)
-        os.remove(path)
+        
+        total = np.dstack((total, total, total))
+        kernel = np.ones((5,5))
 
-    # Set the CRS for the GeoDataFrame
-    # Replace 'EPSG:4326' with the appropriate CRS code for your data
-    
-    total = np.dstack((total, total, total))
-    kernel = np.ones((5,5))
+        dilation = cv2.dilate(total, kernel ,iterations = 3)
+        erosion = cv2.erode(dilation ,kernel,iterations = 3)
 
-    dilation = cv2.dilate(total, kernel ,iterations = 3)
-    erosion = cv2.erode(dilation ,kernel,iterations = 3)
+        total = erosion[:,:,0]
+        
+        output_folder = os.path.join(OUTPUT_FOLDER, os.path.basename(image_path))
 
-    total = erosion[:,:,0]
-    
-    output_folder = os.path.join(OUTPUT_FOLDER, os.path.basename(image_path))
-    
-    os.makedirs(output_folder, exist_ok= True)
-    
-    copy(image_path, os.path.join(output_folder, os.path.basename(image_path)))
+        os.makedirs(output_folder, exist_ok= True)
+        
+        gpd.GeoDataFrame(geometry= list_geoms).to_file(os.path.join(output_folder, 'road_width_polygons.shp'))
 
-    channel_values = np.where(total != 0, 255, 0)
-    tifffile.imwrite(os.path.join(output_folder, 'mask.tif'), np.dstack((channel_values, channel_values, channel_values)))
-    copy_geodata_to(image_path, os.path.join(output_folder, 'mask.tif'))
+        copy(image_path, os.path.join(output_folder, os.path.basename(image_path)))
+        """
+            channel_values = np.where(total != 0, 255, 0)
+            tifffile.imwrite(os.path.join(output_folder, 'mask.tif'), np.dstack((channel_values, channel_values, channel_values)))
+            copy_geodata_to(image_path, os.path.join(output_folder, 'mask.tif'))
 
-    outline = create_outline(np.transpose(image, (2, 0, 1)))
-    tifffile.imwrite(os.path.join(output_folder, 'outline.tif'), channel_values)
-    copy_geodata_to(image_path, os.path.join(output_folder, 'outline.tif'))
+            outline = create_outline(np.transpose(image, (2, 0, 1)))
+            tifffile.imwrite(os.path.join(output_folder, 'outline.tif'), channel_values)
+            copy_geodata_to(image_path, os.path.join(output_folder, 'outline.tif'))
+        """
+        channel_values = np.where(total != 0, 255, 0)
+        outline = create_outline(np.transpose(image, (2, 0, 1)))
 
-    cv2.imwrite(f'{os.path.join(output_folder, "mask.png")}', channel_values)
-    cv2.imwrite(f'{os.path.join(output_folder, "outline.png")}', np.dstack((outline, outline, outline)))
+        cv2.imwrite(f'{os.path.join(output_folder, "mask.png")}', channel_values)
+        cv2.imwrite(f'{os.path.join(output_folder, "outline.png")}', np.dstack((outline, outline, outline)))
 
-    tifffile.imwrite(os.path.join(output_folder, f'drawn_{os.path.basename(image_path)}'), draw_clean_roads_on_image(image, total, outline))
-    copy_geodata_to(image_path, os.path.join(output_folder, f'drawn_{os.path.basename(image_path)}'))
+        tifffile.imwrite(os.path.join(output_folder, f'drawn_{os.path.basename(image_path)}'), draw_clean_roads_on_image(image, total, outline))
+        copy_geodata_to(image_path, os.path.join(output_folder, f'drawn_{os.path.basename(image_path)}'))
 
-    gpd.GeoDataFrame(geometry= cleaned_shapefile.geometry).to_file(f'{output_folder}/roads_in_image.shp')
+        gpd.GeoDataFrame(geometry= cleaned_shapefile.geometry).to_file(f'{output_folder}/roads_in_image.shp')
+
+        grand_geodata_frame.to_file(f'{output_folder}/roads_in_image_with_association_to_road.shp')
+
+
+
 
 
 
