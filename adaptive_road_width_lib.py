@@ -25,10 +25,11 @@ import shapely._geos
 from shutil import copy
 import tifffile
 import numpy as np
-from blend_modes import multiply as mult_blend
-from blend_modes import normal as nr
+import road_coloring_lib as paint
 from PIL import Image
 import pandas  as pd
+
+import buldings_support
 
 
 
@@ -53,57 +54,10 @@ AVRAGE_DISTANCE_MAX = config['AVRAGE_DISTANCE_MAX']
 AVRAGE_DISTANCE_MAX_DISTANCE_SUBSTITUTE = config['AVRAGE_DISTANCE_MAX_DISTANCE_SUBSTITUTE']
 AVRAGE_DISTANCE_FAILIURE  = config['AVRAGE_DISTANCE_FAILIURE']
 
-def draw_clean_roads_on_image(image, mask, outline):
-   
-    mask = np.dstack((mask, mask, mask))
-    outline = np.dstack((outline, outline, outline))
-    #road_rescaled_mask = cv2.imread('output.png')[:2000, :2000]
-    
-    mask_blured_egdes = cv2.GaussianBlur(mask , (41, 41), 0)
-    
-    #the image pixelate than add blur
-    height, width = image.shape[:2]
-
-    # Desired "pixelated" size
-    w, h = (150, 150)
-
-    # Resize input to "pixelated" size
-    temp = cv2.resize(image, (w, h), interpolation=cv2.INTER_LINEAR)
-
-    # Initialize output image
-    output = cv2.resize(temp, (width, height), interpolation=cv2.INTER_NEAREST)
-
-    pixelated_image_roads = output
-
-    blur_image_roads = np.where(mask_blured_egdes != 0, cv2.GaussianBlur(pixelated_image_roads , (0,0), 7), 0)
-
-    blur_outline_roads = np.where(mask_blured_egdes != 0, cv2.GaussianBlur(outline , (0,0), 15), 0)
-    
-    #road_rescaled_mask_roads = np.array(Image.fromarray(np.where(mask_blured_egdes != 0, road_rescaled_mask, 0)).convert('RGBA'), dtype= float)
-
-    blur_image_roads_fixed = np.array(Image.fromarray(blur_image_roads).convert("RGBA"), dtype= float)
-    blur_outline_roads_fixes = np.array(Image.fromarray(blur_outline_roads).convert("RGBA"), dtype= float)
-
-    final_road_mask = np.array(Image.fromarray(np.uint8(mult_blend(blur_image_roads_fixed, blur_outline_roads_fixes, 0.55))).convert('RGB'))
-
-    #temp = np.uint8(mult_blend(road_mask, road_rescaled_mask_roads, 0.5))
-    #final_mask = Image.fromarray(temp).convert('RGB')
-    #final_road_mask = np.array(final_mask)
-
-    final_image = np.where(mask_blured_egdes != 0, final_road_mask, image)
-
-    blur_outline_true_road = np.array(Image.fromarray(np.where(mask_blured_egdes != 0, cv2.GaussianBlur(final_image , (81,81), 0), 0)).convert('RGBA'), dtype= float)
-    
-    temp = np.where(mask_blured_egdes != 0, cv2.imread(r'output.png'), 0)
-
-    road_texture = np.array(Image.fromarray(temp).convert('RGBA'), dtype= float)
-
-    final_mask = np.array(Image.fromarray(np.uint8(nr(blur_outline_true_road, road_texture, 0.20))).convert('RGB'))
-
-    final_image_super = np.where(final_mask != 0, final_mask, image)
 
 
-    return final_image_super
+def draw_clean_roads_on_image(image, mask):
+    return paint.create_image(image, mask)
 
 
 def copy_geodata_to(source_tiff: str, destination_tiff:str):
@@ -336,7 +290,7 @@ def get_pixels_intersects_with_polylines(src: rasterio.open, image: np.array, li
     shapes = [(geom, 1) for geom in polyline_gdf.geometry]
    
     # Create a masked array to obtain the pixel values that overlap with the polyline
-    polyline_mask = features.geometry_mask(shapes, out_shape=(src.height, src.width), transform=src.transform, invert=True).astype('uint8')
+    polyline_mask = features.geometry_mask(shapes, out_shape=(src.height, src.width), transform=src.transform, invert=True).astype('uint8') * 255
 
     # You can access the pixel values that overlap with the polyline using masked_image
     overlap_pixels = image[(polyline_mask != 0)]
@@ -360,7 +314,7 @@ def estimate_material(rgb_values, materials):
     distRGB = (materials[:,0] - np.double(rgb_values[0]))**2 + (materials[:,1] - np.double(rgb_values[1]))**2 + (materials[:,2] - np.double(rgb_values[2]))**2
     
     # returns the squared Euclidean distances between the pixel's RGB values and each material's RGB values.
-    return distRGB
+    return np.sqrt(distRGB)
 
 def calculate_to_lines_to_center_line(intern_poly: list, distance: float, a_side: bool = True) -> LineString:
     """
@@ -534,7 +488,7 @@ def create_mask_of_straigh_road_from_road_mask(src: rasterio.open, road_mask: np
 
 
 
-def road_function(src: rasterio, image: np.ndarray, road_geom_coords: list, max_dist: float = 50, points_distance: float = 1.5, prependicular_length: float = 2) -> np.array:
+def road_function(src: rasterio, image: np.ndarray, road_geom_coords: list, road_id ,max_dist: float = 50, points_distance: float = 1.5, prependicular_length: float = 2) -> np.array:
     """
     Detects and extracts a road mask from an aerial image based on road geometry coordinates.
 
@@ -549,6 +503,19 @@ def road_function(src: rasterio, image: np.ndarray, road_geom_coords: list, max_
     Returns:
         numpy.ndarray: Binary mask representing the detected road.
     """
+    try:
+        bounds_shapefile = gpd.read_file(r'results\\boundries.shp')
+        bound = bounds_shapefile[bounds_shapefile['id'] == road_id].iloc[0]['geometry']
+        bound = (bound, 1)
+
+        polygon_mask = features.geometry_mask([bound], out_shape=(src.height, src.width), transform=src.transform, invert=True).astype('uint8')
+
+        return polygon_mask, bound[0]
+
+    except:
+        print (road_id)
+        print ('boundries no found. working on the entire road')
+
     # Initialize an empty array for the final road mask
     combined_total = np.zeros(image.shape[:2], dtype= 'uint8')
     
@@ -562,20 +529,24 @@ def road_function(src: rasterio, image: np.ndarray, road_geom_coords: list, max_
         # Generate intermediate points between two consecutive coordinates
         intern_poly = [Point(initial)] + create_intermidiate_points_between_true_points(Point(initial), Point(final), points_distance) + [Point(final)]
         
-        # Generate perpendicular lines to the intermediate polyline
         list_of_perpendicular_line = []
+        # Generate perpendicular lines to the intermediate polyline
         vec = calculate_line_vector_direction(LineString(intern_poly))
         for i in range(len(intern_poly)):
             perpendicular_line = create_perpendicular_line(LineString(intern_poly), intern_poly[i], vec)
             mod_perpendicular_line = modify_polyline(perpendicular_line, prependicular_length)
             list_of_perpendicular_line.append(mod_perpendicular_line)
 
+        initial_coord = final
+
         # Extract pixel values intersecting with the perpendicular lines
         pixel_array = get_pixels_intersects_with_polylines(src ,image ,list_of_perpendicular_line)
 
         # Create a buffer polygon around the intermediate polyline
-        shapes = [(LineString(intern_poly).buffer(BAD_GUESS_POLYGON_BUFFER), 1)]
-        polygon_mask = features.geometry_mask(shapes, out_shape=(src.height, src.width), transform=src.transform, invert=True).astype('uint8')
+       
+        bound = [(LineString(intern_poly).buffer(BAD_GUESS_POLYGON_BUFFER), 1)]
+        
+        polygon_mask = features.geometry_mask(bound, out_shape=(src.height, src.width), transform=src.transform, invert=True).astype('uint8')
 
         # Initialize an empty array for the combined mask
         combined = np.zeros(image.shape[:2]).astype('uint8')
@@ -591,11 +562,10 @@ def road_function(src: rasterio, image: np.ndarray, road_geom_coords: list, max_
         
         # Update the total combined mask
         combined_total = np.where(combined != 0, 255, combined_total)
-        initial_coord = final
+        
         #print (initial, final)
 
-
-    kernel = np.ones(KERNEL_SIZE ,np.uint8)
+    #kernel = np.ones(KERNEL_SIZE ,np.uint8)
     result = combined_total
 
     try:
@@ -655,7 +625,7 @@ def road_function(src: rasterio, image: np.ndarray, road_geom_coords: list, max_
         polyline_mask = features.geometry_mask(shapes, out_shape=(src.height, src.width), transform=src.transform, invert=True).astype('uint8')
         
         return polyline_mask, road_polygon
-       
+
 
 def equalize_with_blend(original_image, equalized_image, blend_factor):
     # Blend original and equalized images using the specified blend factor
@@ -739,12 +709,16 @@ def worker_function(data):
     if section + PROCESS_BATCH_SIZE > len(roads_shapefile['geometry']):
         end_point = len(roads_shapefile['geometry'])
     
-    for geom in tqdm(roads_shapefile.geometry[section: end_point]):
-        
+
+    data = [[row[-1], row[1]] for row in roads_shapefile.iloc[section: end_point].itertuples()]
+
+    for i in tqdm(range(len(data))):
+        geom, road_id = data[i]
         road_mask , road_polygon = road_function(
             src,
             image, 
-            make_list_from_polyline(geom), 
+            make_list_from_polyline(geom),
+            road_id,
             PIXEL_DISTANCE_TRESH, 
             SPACES_BETWEEN_PREPENDICULAR, 
             PREPENDICULAR_LENGTH)
@@ -766,6 +740,62 @@ def worker_function(data):
     
     return list_geometries
 
+def break_to_linestrings(road_polyline, distance):
+    all_polylines = []
+    #road to straight polylines
+    polylines = [LineString([road_polyline.coords[i - 1], road_polyline.coords[i]]) for i in range(1, len(road_polyline.coords))]
+    for polyline in polylines:
+        coords = [Point(coord) for coord in polyline.coords]
+        
+        polyline_with_distance_adjesments = LineString([coords[0]] + create_intermidiate_points_between_true_points(coords[0], coords[-1], distance) + [coords[-1]])
+        
+        polylines_with_distance_adjesments = [LineString([polyline_with_distance_adjesments.coords[i - 1], polyline_with_distance_adjesments.coords[i]]) 
+                                                          for i in range(1, len(polyline_with_distance_adjesments.coords))]
+        
+        all_polylines += polylines_with_distance_adjesments
+
+    return all_polylines
+
+def modify_sumo(sumo_shapefile, road_distance):
+    road_ids = []
+    road_types = []
+    tos = []
+    from_s = []
+    lanes_nums = []
+    road_widths = []
+    sidewalks = []
+    sidewalk_ws = []
+    geometries = []
+
+    for road in sumo_shapefile.itertuples():
+        _, road_id, road_type, to, from_, lanes_num, road_width, sidewalk, sidewalk_w, geometry = list(road) 
+        linestrings = break_to_linestrings(geometry, road_distance)
+        for idx , linestring in enumerate(linestrings):
+            new_road_id = road_id + f'#{idx}'
+            new_geometry = linestring
+
+            road_ids.append(new_road_id)
+            road_types.append(road_type)
+            tos.append(to)
+            from_s.append(from_)
+            lanes_nums.append(lanes_num)
+            road_widths.append(road_width)
+            sidewalks.append(sidewalk)
+            sidewalk_ws.append(sidewalk_w)
+            geometries.append(new_geometry)
+
+    table = {
+                'id': road_ids,
+                'type': road_types,
+                'to': tos,
+                'from': from_s,
+                'lane_num': lanes_nums,
+                'road_w': road_widths,
+                'sidewalk': sidewalks,
+                'sidewalk_w': sidewalk_ws
+            }
+
+    return gpd.GeoDataFrame(geometry= geometries, data = table)
 
 
 if __name__ == '__main__':
@@ -807,6 +837,7 @@ if __name__ == '__main__':
     # Filter out polygons that do not intersect with the GeoTIFF
     cleaned_shapefile = raw_roads_shapefile[raw_roads_shapefile.geometry.intersects(geotiff_bounds)]
 
+    """
     #creating even length polylines for improving proccesing time
     if not(cleaned_shapefile.empty):
         list_even_length_linestrings = []
@@ -825,13 +856,22 @@ if __name__ == '__main__':
 
         roads_shapefile = gpd.GeoDataFrame(geometry= list_even_length_linestrings)
         os.makedirs('results',exist_ok= True)
-        roads_shapefile.to_file('results/roads.shp')
+        
+    """
+    cleaned_shapefile = modify_sumo(cleaned_shapefile, ROAD_SORT_SIZE)
+    os.makedirs('results',exist_ok= True)
+    cleaned_shapefile.to_file('results/roads.shp')
 
+    buldings_support.get_roads_boundries(config['BUILDINGS_VECTORS'], cleaned_shapefile, image_path).to_file('results/boundries.shp')
+
+
+
+    if not(cleaned_shapefile.empty):
         print (os.path.basename(image_path))
         image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
 
         num_processes = num_cores
-        index_list = [[i, image_path] for i in range(0, len(roads_shapefile['geometry']), PROCESS_BATCH_SIZE)]
+        index_list = [[i, image_path] for i in range(0, len(cleaned_shapefile['geometry']), PROCESS_BATCH_SIZE)]
 
         with multiprocessing.Pool(processes=num_processes) as pool:
             # Use the map function to apply the simple_function to each input value
@@ -884,7 +924,7 @@ if __name__ == '__main__':
         cv2.imwrite(f'{os.path.join(output_folder, "mask.png")}', channel_values)
         cv2.imwrite(f'{os.path.join(output_folder, "outline.png")}', np.dstack((outline, outline, outline)))
 
-        tifffile.imwrite(os.path.join(output_folder, f'drawn_{os.path.basename(image_path)}'), draw_clean_roads_on_image(image, total, outline))
+        tifffile.imwrite(os.path.join(output_folder, f'drawn_{os.path.basename(image_path)}'), draw_clean_roads_on_image(image, total))
         copy_geodata_to(image_path, os.path.join(output_folder, f'drawn_{os.path.basename(image_path)}'))
 
         gpd.GeoDataFrame(geometry= cleaned_shapefile.geometry).to_file(f'{output_folder}/roads_in_image.shp')
