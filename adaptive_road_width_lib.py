@@ -338,7 +338,7 @@ def calculate_to_lines_to_center_line(intern_poly: list, distance: float, a_side
     if (vec.coords[0][0] != 0):
         m_angle_with_x_axis = math.degrees(math.atan(vec.coords[0][1] / vec.coords[0][0]))
     else:
-        m_angle_with_x_axis = 0
+        m_angle_with_x_axis = 90
     
     # Original polyline as a list of (longitude, latitude) coordinates
     original_polyline = LineString(intern_poly)  
