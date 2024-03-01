@@ -13,7 +13,25 @@ from geopy.distance import geodesic
 import math
 from shapely.ops import unary_union
 
+import rasterio
+from rasterio.transform import from_origin
+import cv2
+
+from rasterio.features import Window
+
 import json
+
+from tqdm import tqdm
+
+
+def get_reference_point_on_image(transform, point):
+
+    lon, lat = point.x, point.y
+
+    # Convert geographic coordinates to pixel coordinates
+    col, row = ~transform * (lon, lat)
+
+    return (col, row)
 
 
 
@@ -79,14 +97,78 @@ def create_polygon_from_polyline(road_polyline, width_meters):
     return Polygon(a_side + b_side[::-1])
 
 
+def is_condition_set_true(image_path, pointA, pointB ,new_road_mask ,og_road_mask):
+    contours, _ = cv2.findContours(og_road_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for c in contours: #there is one object
+        x, y, w, h = cv2.boundingRect(c)
+
+    new_road_mask = new_road_mask[y: y + h, x: x + w]
+    og_road_mask = og_road_mask[y: y + h, x: x + w]
+
+    src = rasterio.open(image_path)
+    
+    #find transformation of the mask object
+    # Calculate the window for the current tile
+    window = Window(x, y, w, h)
+
+    # Calculate the transform for the current tile
+    tile_transform = src.window_transform(window)
+    
+    #check if object is intersected from both sides
+    y_A, x_A = get_reference_point_on_image(tile_transform, pointA)
+
+    y_B, x_B = get_reference_point_on_image(tile_transform, pointB)
+
+    
+    if x_A - x_B == 0:
+        m = np.inf
+    else:
+        m = (max(y_B, y_A) - min(y_B, y_A)) / (max(x_B, x_A) - min(x_B, x_A))
+
+    
+    x_reference, y_reference = np.array([x_B + x_A, y_A + y_B]) / 2
+
+
+    # Create a mesh grid of coordinates corresponding to each pixel in the image
+    x, y = np.meshgrid(np.arange(og_road_mask.shape[1]), np.arange(og_road_mask.shape[0]))
+
+    # Use the line equation to determine which side of the line each pixel falls on
+    above_line = y > (m * (x_reference - x) + y_reference)
+    below_line = ~above_line
+
+    are_equal_side_a = np.array_equal(np.where(above_line > 0, new_road_mask, 0), np.where(above_line > 0, og_road_mask, 0))
+    are_equal_side_b = np.array_equal(np.where(below_line > 0, new_road_mask, 0), np.where(below_line > 0, og_road_mask, 0))
+            
+    
+    condition_1 = (are_equal_side_a == False) and (are_equal_side_b == False) #both side were modifed
+
+    if condition_1:
+        return condition_1
+    
+    elif (((are_equal_side_a == False) and (are_equal_side_b == True)) or ((are_equal_side_a == True) and (are_equal_side_b == False))):
+        original_count_pixels = np.count_nonzero(og_road_mask)
+        new_pixel_count  = np.count_nonzero(new_road_mask)
+
+        print (((original_count_pixels - new_pixel_count) / original_count_pixels), ((original_count_pixels - new_pixel_count) / original_count_pixels) > 0.50)
+        return (((original_count_pixels - new_pixel_count) / original_count_pixels) > 0.50)
+    
+    return False
+
+    
+
+def get_center_point(polyline):
+    
+    point_initial , point_final = Point(polyline.coords[0]), Point(polyline.coords[-1])
+
+    return(Point(np.array([point_initial.x + point_final.x, 
+                           point_initial.y + point_final.y])/ 2))
 
     
 def get_roads_boundries(buildings_shapefile_path, roads_from_sumo_shapefile, image_path):
     #building vectors
-    
     buildings_shapefile = gpd.read_file(buildings_shapefile_path)
     roads_from_sumo_shapefile = roads_from_sumo_shapefile
-
     #images                            
     SHAPES = list(buildings_shapefile['geometry'])
     
@@ -117,17 +199,26 @@ def get_roads_boundries(buildings_shapefile_path, roads_from_sumo_shapefile, ima
 
     road_ids = []
     road_polygons = []
-    for road in image_roads.itertuples():
+    road_polygons_test = []
+
+    print (image_roads.shape)
+    roads_with_buildins =  0
+    for road in tqdm(image_roads.itertuples()):
         road_polyline = road[-1]
         road_id = road[1]
 
-        road_polygon = create_polygon_from_polyline(road_polyline, 15)
+
+        road_polygon = create_polygon_from_polyline(road_polyline, 10)
 
         road_mask = features.geometry_mask([(road_polygon, 1)], out_shape=(src.height, src.width), transform=src.transform, invert= True).astype('uint8') * 255
 
+        new_road_mask = np.where((road_mask == 255) & (polyline_mask == 255), 0, road_mask)
+
         col, row = np.where((road_mask == 255) & (polyline_mask == 255))
         
-        if len(col) != 0:    
+        if is_condition_set_true(image_path, Point(road_polyline.coords[0]),  Point(road_polyline.coords[1]) ,new_road_mask, road_mask): 
+            roads_with_buildins += 1
+            
             road_mask[(col, row)] = 0
 
             # Find shapes in the mask using rasterio.features.shapes
@@ -160,7 +251,13 @@ def get_roads_boundries(buildings_shapefile_path, roads_from_sumo_shapefile, ima
                     
                     road_polygons.append(largest_polygon)   
                     road_ids.append(road_id)
+            
+            road_polygons_test.append(road_polygon)
 
     table = {'id': road_ids}
     
+    print ('intersecting with buildoings: ', roads_with_buildins)
+    print (image_roads.shape[0])
+    
+    gpd.GeoDataFrame(geometry= road_polygons_test).to_file('test_roads.shp')
     return gpd.GeoDataFrame(geometry = road_polygons, data = table)

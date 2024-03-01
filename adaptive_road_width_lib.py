@@ -711,6 +711,10 @@ def worker_function(data):
     
 
     data = [[row[-1], row[1]] for row in roads_shapefile.iloc[section: end_point].itertuples()]
+    
+    object_names = []
+    for geom, road_id in data:
+        object_names.append(road_id)
 
     for i in tqdm(range(len(data))):
         geom, road_id = data[i]
@@ -727,12 +731,10 @@ def worker_function(data):
         list_geometries.append(road_polygon)
         total_combined = np.where(road_mask != 0, road_mask, total_combined)
     
-    table = {'polyline': [str(make_list_from_polyline(polyline)) for polyline in roads_shapefile.geometry[section: end_point]]}
+    table = {'id': object_names, 'polyline': [str(make_list_from_polyline(polyline)) for polyline in roads_shapefile.geometry[section: end_point]]}
     road_associated_polygon = gpd.GeoDataFrame(geometry= list_geometries, data= table)
 
 
-
-    
     import pickle
     os.makedirs('results/', exist_ok= True)
     with open(f'results/image_{section}_{end_point}.pkl', 'wb') as f:
@@ -757,45 +759,24 @@ def break_to_linestrings(road_polyline, distance):
     return all_polylines
 
 def modify_sumo(sumo_shapefile, road_distance):
-    road_ids = []
-    road_types = []
-    tos = []
-    from_s = []
-    lanes_nums = []
-    road_widths = []
-    sidewalks = []
-    sidewalk_ws = []
+    data = []
     geometries = []
-
-    for road in sumo_shapefile.itertuples():
-        _, road_id, road_type, to, from_, lanes_num, road_width, sidewalk, sidewalk_w, geometry = list(road) 
-        linestrings = break_to_linestrings(geometry, road_distance)
+    for i in range(sumo_shapefile.shape[0]):
+        row = sumo_shapefile.iloc[i]
+        
+        linestrings = break_to_linestrings(row.geometry, road_distance)
         for idx , linestring in enumerate(linestrings):
-            new_road_id = road_id + f'#{idx}'
+            new_road_id = row['osm_id'] + f'#{idx}'
             new_geometry = linestring
 
-            road_ids.append(new_road_id)
-            road_types.append(road_type)
-            tos.append(to)
-            from_s.append(from_)
-            lanes_nums.append(lanes_num)
-            road_widths.append(road_width)
-            sidewalks.append(sidewalk)
-            sidewalk_ws.append(sidewalk_w)
+            new_row = row.copy()
+            new_row['osm_id'] = new_road_id
+            
+            data.append(new_row[:-1])
             geometries.append(new_geometry)
 
-    table = {
-                'id': road_ids,
-                'type': road_types,
-                'to': tos,
-                'from': from_s,
-                'lane_num': lanes_nums,
-                'road_w': road_widths,
-                'sidewalk': sidewalks,
-                'sidewalk_w': sidewalk_ws
-            }
 
-    return gpd.GeoDataFrame(geometry= geometries, data = table)
+    return gpd.GeoDataFrame(geometry= geometries, data = data)
 
 
 if __name__ == '__main__':
@@ -826,7 +807,6 @@ if __name__ == '__main__':
         profile = src.profile  # Get the metadata (e.g., spatial resolution, CRS)
         image_transform = src.transform
         crs = src.crs
-
         
     # Read the shapefile and reproject to match the CRS of the GeoTIFF
     shapefile = raw_roads_shapefile.to_crs(profile["crs"])  # Reproject the shapefile
@@ -837,28 +817,8 @@ if __name__ == '__main__':
     # Filter out polygons that do not intersect with the GeoTIFF
     cleaned_shapefile = raw_roads_shapefile[raw_roads_shapefile.geometry.intersects(geotiff_bounds)]
 
-    """
-    #creating even length polylines for improving proccesing time
-    if not(cleaned_shapefile.empty):
-        list_even_length_linestrings = []
-        for raw_geom in cleaned_shapefile['geometry']:
-            list_coords_geom = []
-            for i in range(1, len(raw_geom.coords)):
-                list_coords_geom = list_coords_geom + [Point(raw_geom.coords[i-1])] + create_intermidiate_points_between_true_points(Point(raw_geom.coords[i-1]), Point(raw_geom.coords[i]), ROAD_SORT_SIZE)
-
-            
-            list_coords_geom = list_coords_geom + [Point(raw_geom.coords[-1])]
-                
-
-            for i in range(1, len(list_coords_geom)):
-                print ([list_coords_geom[i-1], list_coords_geom[i]])
-                list_even_length_linestrings.append(LineString([list_coords_geom[i-1], list_coords_geom[i]]))
-
-        roads_shapefile = gpd.GeoDataFrame(geometry= list_even_length_linestrings)
-        os.makedirs('results',exist_ok= True)
-        
-    """
     cleaned_shapefile = modify_sumo(cleaned_shapefile, ROAD_SORT_SIZE)
+    
     os.makedirs('results',exist_ok= True)
     cleaned_shapefile.to_file('results/roads.shp')
 

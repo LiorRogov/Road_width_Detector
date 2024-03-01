@@ -1,8 +1,8 @@
 {
-    "ROADS_SHAPEFILE_FILE": "C:\\Users\\Simlat\\Desktop\\simlat lior\\Road Sumo Solver\\output\\to_use\\vector_porto_santo.shp",
-    "IMAGES_DIR": "C:\\Users\\Simlat\\Desktop\\simlat lior\\material solver\\Alaro for demo\\",
-    "OUTPUT_FOLDER": "C:\\Users\\Simlat\\Desktop\\simlat lior\\material solver\\Alaro for demo\\output\\",
-    "BUILDINGS_VECTORS": "C:\\Users\\Simlat\\Desktop\\simlat lior\\Road Sumo Solver\\output\\bulding_vectors.shp",
+    "ROADS_SHAPEFILE_FILE": "C:\\Users\\Simlat\\Desktop\\simlat lior\\projects_materials\\full_Alaro\\Alaro_Roads\\Road_OSM_edited_shp\\net_fixed.shp",
+    "IMAGES_DIR": "C:\\Users\\Simlat\\Desktop\\simlat lior\\projects_materials\\full_Alaro\\Alaro_Roads\\Imagery",
+    "OUTPUT_FOLDER": "C:\\Users\\Simlat\\Desktop\\simlat lior\\projects_materials\\full_Alaro\\Alaro_Roads\\output",
+    "BUILDINGS_VECTORS": "C:\\Users\\Simlat\\Desktop\\simlat lior\\projects_materials\\full_Alaro\\Alaro_Roads\\building_vectors\\bulding_vectors.shp",
     
     "PIXEL_DISTANCE_TRESH" : 25,
     "PREPENDICULAR_LENGTH" : 1.5, 

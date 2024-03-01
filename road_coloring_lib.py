@@ -36,8 +36,8 @@ def combine_to_road(cancel_phazes, mask_roads, true_image, graint_road, brightne
     base_image_RGBA = np.array(Image.fromarray(base_image).convert('RGBA'), dtype= float)
     graint_road_RGBA = np.array(Image.fromarray(graint_road).convert('RGBA'), dtype= float)
 
-    base_image_before_pixelated_road_2 = lighten_only(base_image_RGBA, brightness_mask_dark, 0.50)
-    base_image_before_pixelated_road_1 = darken_only(base_image_RGBA, brightness_mask_light, 0.25)
+    base_image_before_pixelated_road_2 = lighten_only(base_image_RGBA, brightness_mask_dark, 0.75)
+    base_image_before_pixelated_road_1 = darken_only(base_image_RGBA, brightness_mask_light, 0.50)
 
     final = cv2.addWeighted(base_image_before_pixelated_road_1, 0.5, base_image_before_pixelated_road_2, 0.5, 0)
 
@@ -92,7 +92,7 @@ def create_image(true_image, mask_roads):
 
     brightness_mask = create_brightness_mask(true_image, mask_roads)
     canceled_phazes = cancel_phazes(true_image, mask_roads)
-    grany_road = create_grany_road(true_image, mask_roads)
+    grany_road = cv2.GaussianBlur(create_grany_road(true_image, mask_roads), (0,0), 1.5)
     image = combine_to_road(canceled_phazes, mask_roads, true_image, grany_road, brightness_mask)
    
     blurred_img = cv2.GaussianBlur(image, (9, 9), 0)
